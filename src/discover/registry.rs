@@ -461,7 +461,7 @@ fn collapse_line_continuations(s: &str) -> std::borrow::Cow<'_, str> {
 
 /// Returns `None` if the command is unsupported or ignored (hook should pass through).
 ///
-/// Handles compound commands (`&&`, `||`, `;`) by rewriting each segment independently.
+/// Handles compound commands (`&&`, `||`, `;`, newline) by rewriting each segment independently.
 /// For pipes (`|`), only rewrites the left-hand command (pipe targets stay raw),
 /// but continues rewriting segments after subsequent `&&`/`||`/`;` operators.
 /// Also strips user-configured transparent wrapper prefixes
@@ -506,6 +506,8 @@ pub fn rewrite_command(
     let has_compound = trimmed.contains("&&")
         || trimmed.contains("||")
         || trimmed.contains(';')
+        || trimmed.contains('\n')
+        || trimmed.contains('\r')
         || trimmed.contains('|')
         || trimmed.contains(" & ");
     if !has_compound && (trimmed.starts_with("rtk ") || trimmed == "rtk") {
@@ -515,7 +517,11 @@ pub fn rewrite_command(
     rewrite_compound(trimmed, &compiled, &normalized_prefixes)
 }
 
-/// Rewrite a compound command (with `&&`, `||`, `;`, `|`) by rewriting each segment.
+fn is_newline_operator(value: &str) -> bool {
+    value == "\n" || value == "\r\n" || value == "\r"
+}
+
+/// Rewrite a compound command (with `&&`, `||`, `;`, newline, `|`) by rewriting each segment.
 fn rewrite_compound(
     cmd: &str,
     excluded: &[ExcludePattern],
@@ -539,7 +545,9 @@ fn rewrite_compound(
                     any_changed = true;
                 }
                 result.push_str(&rewritten);
-                if tok.value == ";" {
+                if is_newline_operator(&tok.value) {
+                    result.push_str(&tok.value);
+                } else if tok.value == ";" {
                     result.push(';');
                     let after = tok.offset + tok.value.len();
                     if after < cmd.len() {
@@ -551,7 +559,12 @@ fn rewrite_compound(
                     result.push(' ');
                 }
                 seg_start = tok.offset + tok.value.len();
-                while seg_start < cmd.len() && cmd.as_bytes().get(seg_start) == Some(&b' ') {
+                while seg_start < cmd.len()
+                    && cmd
+                        .as_bytes()
+                        .get(seg_start)
+                        .is_some_and(|b| *b == b' ' || *b == b'\t')
+                {
                     seg_start += 1;
                 }
             }
@@ -3112,6 +3125,47 @@ mod tests {
         assert_eq!(
             rewrite_command_no_prefixes("git status; cargo test", &[]),
             Some("rtk git status; rtk cargo test".into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_compound_newline_after_unsupported_segment() {
+        let input = "cd /tmp\ngrep -c x /tmp/f.txt\ngrep -c x /tmp/f.txt";
+        let expected = "cd /tmp\nrtk grep -c x /tmp/f.txt\nrtk grep -c x /tmp/f.txt";
+
+        assert_eq!(
+            rewrite_command_no_prefixes(input, &[]),
+            Some(expected.into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_compound_newline_after_supported_segment() {
+        let input = "grep -c x /tmp/f.txt\ngrep -c x /tmp/f.txt";
+        let expected = "rtk grep -c x /tmp/f.txt\nrtk grep -c x /tmp/f.txt";
+
+        assert_eq!(
+            rewrite_command_no_prefixes(input, &[]),
+            Some(expected.into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_compound_crlf_separator() {
+        let input = "grep -c x /tmp/f.txt\r\ngrep -c x /tmp/f.txt";
+        let expected = "rtk grep -c x /tmp/f.txt\r\nrtk grep -c x /tmp/f.txt";
+
+        assert_eq!(
+            rewrite_command_no_prefixes(input, &[]),
+            Some(expected.into())
+        );
+    }
+
+    #[test]
+    fn test_rewrite_pipe_group_then_newline() {
+        assert_eq!(
+            rewrite_command_no_prefixes("git log | head -5\ngit status", &[]),
+            Some("rtk git log | head -5\nrtk git status".into())
         );
     }
 

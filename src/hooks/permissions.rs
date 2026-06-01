@@ -387,6 +387,15 @@ mod tests {
     }
 
     #[test]
+    fn test_newline_compound_command_deny() {
+        let deny = vec!["git push --force".to_string()];
+        assert_eq!(
+            check_command_with_rules("git status\ngit push --force", &deny, &[], &[]),
+            PermissionVerdict::Deny
+        );
+    }
+
+    #[test]
     fn test_compound_command_ask() {
         let ask = vec!["git push".to_string()];
         assert_eq!(
@@ -421,6 +430,24 @@ mod tests {
         assert_eq!(
             check_command_with_rules("cat file | rm -rf /", &deny, &[], &[]),
             PermissionVerdict::Deny
+        );
+    }
+
+    #[test]
+    fn test_newline_allow_requires_every_segment() {
+        let allow = vec!["git status".to_string()];
+        assert_eq!(
+            check_command_with_rules("git status\ngit push origin main", &[], &[], &allow),
+            PermissionVerdict::Default
+        );
+    }
+
+    #[test]
+    fn test_newline_all_segments_allowed() {
+        let allow = vec!["git status".to_string(), "git diff".to_string()];
+        assert_eq!(
+            check_command_with_rules("git status\ngit diff --stat", &[], &[], &allow),
+            PermissionVerdict::Allow
         );
     }
 

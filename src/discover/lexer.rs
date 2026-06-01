@@ -133,6 +133,23 @@ pub fn tokenize(input: &str) -> Vec<ParsedToken> {
                 byte_pos += char_len;
                 current_start = byte_pos;
             }
+            '\n' | '\r' => {
+                flush_arg(&mut tokens, &mut current, current_start);
+                let start = byte_pos;
+                let mut value = c.to_string();
+                byte_pos += char_len;
+                if c == '\r' && chars.peek() == Some(&'\n') {
+                    chars.next();
+                    byte_pos += 1;
+                    value.push('\n');
+                }
+                tokens.push(ParsedToken {
+                    kind: TokenKind::Operator,
+                    value,
+                    offset: start,
+                });
+                current_start = byte_pos;
+            }
             '&' => {
                 flush_arg(&mut tokens, &mut current, current_start);
                 let start = byte_pos;
@@ -492,6 +509,30 @@ mod tests {
         assert!(tokens
             .iter()
             .any(|t| t.kind == TokenKind::Operator && t.value == ";"));
+    }
+
+    #[test]
+    fn test_newline_operator() {
+        let tokens = tokenize("cmd1\ncmd2");
+        assert!(tokens
+            .iter()
+            .any(|t| t.kind == TokenKind::Operator && t.value == "\n"));
+    }
+
+    #[test]
+    fn test_crlf_operator() {
+        let tokens = tokenize("cmd1\r\ncmd2");
+        assert!(tokens
+            .iter()
+            .any(|t| t.kind == TokenKind::Operator && t.value == "\r\n"));
+    }
+
+    #[test]
+    fn test_quoted_newline_not_operator() {
+        let tokens = tokenize("echo \"cmd1\ncmd2\"");
+        assert!(!tokens
+            .iter()
+            .any(|t| t.kind == TokenKind::Operator && t.value.contains('\n')));
     }
 
     #[test]
@@ -1023,6 +1064,11 @@ mod tests {
             split_on_operators(r#"echo "a && b" && cargo test"#, false),
             vec![r#"echo "a && b""#, "cargo test"]
         );
+    }
+
+    #[test]
+    fn test_split_on_operators_newline() {
+        assert_eq!(split_on_operators("a\nb", false), vec!["a", "b"]);
     }
 
     #[test]
