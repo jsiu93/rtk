@@ -446,7 +446,6 @@ fn filter_go_test_json_with_exit(output: &str, exit_code: i32) -> String {
         result.push_str(&format!(", {} skipped", total_skip));
     }
     result.push_str(&format!(" in {} packages\n", total_packages));
-    result.push_str("═══════════════════════════════════════\n");
 
     // Show package-level failures first (timeouts, signals, panics).
     // Skip packages that already have individual test-level failures — those are displayed
@@ -629,7 +628,6 @@ fn format_go_failure(command: &str, output: &str, exit_code: i32) -> String {
 
     let mut result = String::new();
     result.push_str(&format!("{}: failed (exit {})\n", command, exit_code));
-    result.push_str("═══════════════════════════════════════\n");
 
     const MAX_GO_FAILURE_LINES: usize = CAP_ERRORS;
     for (i, line) in lines.iter().take(MAX_GO_FAILURE_LINES).enumerate() {
@@ -782,7 +780,6 @@ fn format_go_items(command: &str, item_label: &str, items: &[String], tee_slug: 
         items.len(),
         item_label
     ));
-    result.push_str("═══════════════════════════════════════\n");
 
     const MAX_GO_ITEMS: usize = CAP_ERRORS;
     for (i, item) in items.iter().take(MAX_GO_ITEMS).enumerate() {
